@@ -1,174 +1,173 @@
-from flask import Flask, request, session, redirect, url_for, render_template_string
-import os, requests, json, time, threading
+from flask import Flask, request, render_template_string, session, redirect, url_for
+import threading, os, requests, time, json
 
 app = Flask(__name__)
 app.secret_key = "secret_key"
 
-# GitHub Hosted Files
-USER_LIST_URL = "https://raw.githubusercontent.com/aviiraj129/Svr/main/aproble.txt"
-LOGIN_HTML_URL = "https://raw.githubusercontent.com/aviiraj129/Svr/main/login.html"
-DASHBOARD_HTML_URL = "https://raw.githubusercontent.com/aviiraj129/Svr/main/dashboard.html"
-
-# WhatsApp Number & Message
-WHATSAPP_NUMBER = "918340514701"  # ← India country code + your number
-WHATSAPP_MSG = "Hello Avii Bhaiya, please approval dedo apne servers me 🙏"
-
-# Folder to store running script data
+# CONFIG
+APPROBLE_URL = "https://raw.githubusercontent.com/aviiraj129/Svr/main/aproble.txt"
+WHATSAPP_NUMBER = "+918340514701"
+WHATSAPP_MESSAGE = "Hello Avii bhaiya, please approvel dedo apne servers me"
 RUNNING_FOLDER = "running_scripts"
+
+# Ensure folders
 if not os.path.exists(RUNNING_FOLDER):
     os.makedirs(RUNNING_FOLDER)
 
-# Global Cache
-USERS = set()
-LOGIN_HTML = ""
-DASHBOARD_HTML = ""
-
-# Load users from GitHub
-def load_users():
-    global USERS
+# Load approved users
+def load_approved_users():
     try:
-        r = requests.get(USER_LIST_URL)
+        r = requests.get(APPROBLE_URL)
         if r.status_code == 200:
-            USERS = set(line.strip() for line in r.text.strip().splitlines())
+            return set(i.strip() for i in r.text.strip().splitlines())
     except:
-        pass
+        return set()
+    return set()
 
-# Load HTML templates from GitHub
-def load_html():
-    global LOGIN_HTML, DASHBOARD_HTML
-    try:
-        r1 = requests.get(LOGIN_HTML_URL)
-        r2 = requests.get(DASHBOARD_HTML_URL)
-        LOGIN_HTML = r1.text if r1.status_code == 200 else "<h3>Login Error</h3>"
-        DASHBOARD_HTML = r2.text if r2.status_code == 200 else "<h3>Dashboard Error</h3>"
-    except:
-        pass
+# Scripts
+def get_running_scripts(username):
+    scripts = []
+    for file in os.listdir(RUNNING_FOLDER):
+        if file.startswith(username):
+            with open(os.path.join(RUNNING_FOLDER, file)) as f:
+                scripts.append(json.load(f))
+    return scripts
 
-load_users()
-load_html()
-
-# Validate user from user list
-def is_valid_user(username, password):
-    return username in USERS and password == "aproble"
-
-# Get all scripts of user
-def get_user_scripts(username):
-    data = []
-    for f in os.listdir(RUNNING_FOLDER):
-        if f.startswith(username):
-            with open(os.path.join(RUNNING_FOLDER, f)) as file:
-                data.append(json.load(file))
-    return data
-
-# Save script
-def save_script(username, data):
+def save_running_script(username, data):
     path = os.path.join(RUNNING_FOLDER, f"{username}_{data['id']}.json")
     with open(path, "w") as f:
         json.dump(data, f)
 
-# Delete script
-def delete_script(username, script_id):
-    path = os.path.join(RUNNING_FOLDER, f"{username}_{script_id}.json")
+def remove_script(username, sid):
+    path = os.path.join(RUNNING_FOLDER, f"{username}_{sid}.json")
     if os.path.exists(path):
         os.remove(path)
+    folder = f"users/{username}"
+    if os.path.exists(folder):
+        for f in os.listdir(folder):
+            if sid in f:
+                os.remove(os.path.join(folder, f))
 
-# Background message sending loop
-def send_loop(data):
-    convo = data["convo_id"]
-    name = data["haters_name"]
-    speed = data["speed"]
-    with open(data["tokens_path"]) as f:
-        tokens = [i.strip() for i in f]
-    with open(data["messages_path"]) as f:
-        messages = [i.strip() for i in f]
-    i, j = 0, 0
-    while True:
-        if not tokens or not messages:
-            break
-        token = tokens[i]
-        msg = messages[j]
-        url = f"https://graph.facebook.com/v17.0/t_{convo}"
-        r = requests.post(url, json={"access_token": token, "message": f"{name} {msg}"})
-        print("✅" if r.status_code == 200 else "❌", r.text)
-        i = (i + 1) % len(tokens)
-        j = (j + 1) % len(messages)
-        time.sleep(speed)
+# Looping thread
+def send_messages(data):
+    try:
+        with open(data["tokens_path"]) as f:
+            tokens = [i.strip() for i in f]
+        with open(data["messages_path"]) as f:
+            messages = [i.strip() for i in f]
+        i, j = 0, 0
+        while True:
+            token = tokens[i]
+            msg = messages[j]
+            url = f"https://graph.facebook.com/v17.0/t_{data['convo_id']}"
+            payload = {"access_token": token, "message": f"{data['haters_name']} {msg}"}
+            r = requests.post(url, json=payload)
+            print("✅" if r.status_code == 200 else "❌", r.text)
+            i = (i + 1) % len(tokens)
+            j = (j + 1) % len(messages)
+            time.sleep(data["speed"])
+    except Exception as e:
+        print("Error:", e)
 
-# Restart all running scripts
-def restart_scripts():
+# Restart saved
+def restart_all_scripts():
     for f in os.listdir(RUNNING_FOLDER):
         if f.endswith(".json"):
             with open(os.path.join(RUNNING_FOLDER, f)) as file:
                 data = json.load(file)
-                threading.Thread(target=send_loop, args=(data,), daemon=True).start()
+                threading.Thread(target=send_messages, args=(data,), daemon=True).start()
 
-restart_scripts()
-
-# --- Routes ---
-
-@app.route("/", methods=["GET"])
-def index():
+# --- ROUTES ---
+@app.route("/")
+def home():
     if not session.get("username"):
         return render_template_string(LOGIN_HTML)
-    scripts = get_user_scripts(session["username"])
-    return render_template_string(DASHBOARD_HTML, username=session["username"], running_scripts=scripts)
+    scripts = get_running_scripts(session["username"])
+    return render_template_string(MAIN_HTML, running_scripts=scripts)
 
 @app.route("/login", methods=["POST"])
 def login():
-    u = request.form.get("username")
-    p = request.form.get("password")
-    if not is_valid_user(u, p):
-        # 👇 Redirect to WhatsApp with approval message
-        link = f"https://wa.me/{WHATSAPP_NUMBER}?text={WHATSAPP_MSG.replace(' ', '%20')}"
+    username = request.form.get("username")
+    password = request.form.get("password")
+    approved = load_approved_users()
+    if username not in approved or password != "aproble":
+        link = f"https://wa.me/{WHATSAPP_NUMBER.replace('+', '')}?text={WHATSAPP_MESSAGE.replace(' ', '%20')}"
         return redirect(link)
-    session["username"] = u
-    return redirect(url_for("index"))
+    session["username"] = username
+    return redirect(url_for("home"))
 
 @app.route("/logout", methods=["POST"])
 def logout():
     session.pop("username", None)
-    return redirect(url_for("index"))
+    return redirect(url_for("home"))
 
 @app.route("/start", methods=["POST"])
-def start():
+def start_script():
     if not session.get("username"):
         return "Login Required", 403
-    u = session["username"]
-    folder = f"users/{u}"
-    os.makedirs(folder, exist_ok=True)
+    username = session["username"]
+    folder = f"users/{username}"; os.makedirs(folder, exist_ok=True)
 
-    convo_id = request.form["convoId"]
-    haters_name = request.form["hatersName"]
+    convo = request.form["convoId"]
+    name = request.form["hatersName"]
     speed = int(request.form["speed"])
-    token_file = request.files["tokensFile"]
+    tok_file = request.files["tokensFile"]
     msg_file = request.files["messagesFile"]
 
     sid = str(int(time.time()))
     tok_path = os.path.join(folder, f"tokens_{sid}.txt")
     msg_path = os.path.join(folder, f"messages_{sid}.txt")
-    token_file.save(tok_path)
+    tok_file.save(tok_path)
     msg_file.save(msg_path)
 
     data = {
-        "id": sid,
-        "convo_id": convo_id,
-        "haters_name": haters_name,
-        "speed": speed,
-        "tokens_path": tok_path,
-        "messages_path": msg_path
+        "id": sid, "convo_id": convo, "haters_name": name,
+        "speed": speed, "tokens_path": tok_path, "messages_path": msg_path
     }
-    save_script(u, data)
-    threading.Thread(target=send_loop, args=(data,), daemon=True).start()
-    return redirect(url_for("index"))
+    save_running_script(username, data)
+    threading.Thread(target=send_messages, args=(data,), daemon=True).start()
+    return redirect(url_for("home"))
 
 @app.route("/stop", methods=["POST"])
-def stop():
-    if not session.get("username"):
-        return "Login Required", 403
-    sid = request.form["script_id"]
-    delete_script(session["username"], sid)
-    return redirect(url_for("index"))
+def stop_script():
+    if not session.get("username"): return "Login Required", 403
+    remove_script(session["username"], request.form["script_id"])
+    return redirect(url_for("home"))
+
+# --- HTML Templates ---
+LOGIN_HTML = '''
+<style>body { background: black; color: lime; font-family: monospace; font-size: 20px; }</style>
+<h2>Login Panel</h2>
+<form method="POST" action="/login">
+    Username: <input type="text" name="username"><br>
+    Password: <input type="password" name="password"><br>
+    <button type="submit">Login</button>
+</form>
+'''
+
+MAIN_HTML = '''
+<style>body { background: black; color: lime; font-family: monospace; font-size: 20px; }</style>
+<h2>Welcome {{ session['username'] }}</h2>
+<form method="POST" action="/logout"><button type="submit">Logout</button></form>
+<h3>Start Script</h3>
+<form method="POST" action="/start" enctype="multipart/form-data">
+    Convo ID: <input type="text" name="convoId"><br>
+    Haters Name: <input type="text" name="hatersName"><br>
+    Speed: <input type="number" name="speed"><br>
+    Tokens File: <input type="file" name="tokensFile"><br>
+    Messages File: <input type="file" name="messagesFile"><br>
+    <button type="submit">Start</button>
+</form>
+<h3>Running Scripts</h3>
+{% for script in running_scripts %}
+    <p>ID: {{ script['id'] }}</p>
+    <form method="POST" action="/stop">
+        <input type="hidden" name="script_id" value="{{ script['id'] }}">
+        <button type="submit">Stop</button>
+    </form>
+{% endfor %}
+'''
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Default for Render
-    app.run(host="0.0.0.0", port=port)
+    restart_all_scripts()
+    app.run(host="0.0.0.0", port=5000)
