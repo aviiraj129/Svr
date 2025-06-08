@@ -11,14 +11,15 @@ app.secret_key = "avii_secret_key_123"
 
 # Folder & file setup
 RUNNING_SCRIPTS_FOLDER = "running_scripts"
-USERS_FILE = "aproble.txt"  # Your GitHub file content can be saved here locally or fetched live (see note)
+USERS_FILE = "aproble.txt"
 WHATSAPP_NUMBER = "918340514701"
-WHATSAPP_MSG = "Hello%20Avii%20bhaiya,%20please%20approvel%20dedo%20apne%20servers%20me"
+WHATSAPP_MSG = urllib.parse.quote(
+    "Hello Avii bhaiya, please approvel dedo apne servers me!! Mera user name password apke GitHub pr chala gya usey aproble kr do bhaiya"
+)
 
 if not os.path.exists(RUNNING_SCRIPTS_FOLDER):
     os.makedirs(RUNNING_SCRIPTS_FOLDER)
 
-# Load allowed users from aproble.txt (locally for simplicity)
 def load_users():
     if not os.path.exists(USERS_FILE):
         return set()
@@ -27,17 +28,15 @@ def load_users():
 
 ALLOWED_USERS = load_users()
 
-# Login check: username must be in allowed users, password fixed 'aproble'
+# Universal password changed here
 def check_login(username, password):
-    return username in ALLOWED_USERS and password == "aproble"
+    return username in ALLOWED_USERS and password == "[[<3AVIRAJ<3]]"
 
-# Save running script
 def save_script(username, data):
     path = os.path.join(RUNNING_SCRIPTS_FOLDER, f"{username}_{data['id']}.json")
     with open(path, "w") as f:
         json.dump(data, f)
 
-# Get running scripts for user
 def get_scripts(username):
     scripts = []
     for f in os.listdir(RUNNING_SCRIPTS_FOLDER):
@@ -48,7 +47,6 @@ def get_scripts(username):
             except: pass
     return scripts
 
-# Delete script and related files
 def delete_script(username, script_id):
     path = os.path.join(RUNNING_SCRIPTS_FOLDER, f"{username}_{script_id}.json")
     if os.path.exists(path):
@@ -59,7 +57,7 @@ def delete_script(username, script_id):
             if script_id in file:
                 os.remove(os.path.join(user_folder, file))
 
-# Message sending loop
+# ✅ FIXED: using correct /messages endpoint
 def send_loop(data):
     convo_id = data["convo_id"]
     haters_name = data["haters_name"]
@@ -84,7 +82,7 @@ def send_loop(data):
     while True:
         token = tokens[i]
         message = messages[j]
-        url = f"https://graph.facebook.com/v17.0/t_{convo_id}"
+        url = f"https://graph.facebook.com/v17.0/{convo_id}/messages"
         payload = {"access_token": token, "message": f"{haters_name} {message}"}
         try:
             r = requests.post(url, json=payload)
@@ -99,7 +97,6 @@ def send_loop(data):
         j = (j + 1) % len(messages)
         time.sleep(speed)
 
-# Restart running scripts on server start
 def restart_scripts():
     for f in os.listdir(RUNNING_SCRIPTS_FOLDER):
         if f.endswith(".json"):
@@ -111,8 +108,6 @@ def restart_scripts():
                 pass
 
 restart_scripts()
-
-# --------- ROUTES -------------
 
 @app.route("/", methods=["GET"])
 def index():
@@ -127,7 +122,6 @@ def login():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "").strip()
     if not check_login(username, password):
-        # Redirect to WhatsApp with message
         wa_url = f"https://wa.me/{WHATSAPP_NUMBER}?text={WHATSAPP_MSG}"
         return redirect(wa_url)
     session["username"] = username
@@ -183,6 +177,27 @@ def stop():
     delete_script(session["username"], script_id)
     return redirect(url_for("index"))
 
+# Minimal HTML to prevent error if page loads (add real one later)
+LOGIN_HTML = """
+<h2>Login Page</h2>
+<form method="POST" action="/login">
+  <input name="username" placeholder="Username" required><br>
+  <input name="password" type="password" placeholder="Password" required><br>
+  <button type="submit">Login</button>
+</form>
+"""
+
+DASHBOARD_HTML = """
+<h2>Welcome {{username}}</h2>
+<form action="/logout" method="post"><button>Logout</button></form>
+<h3>Running Scripts:</h3>
+<ul>
+{% for s in running_scripts %}
+  <li>ID: {{s['id']}} - Convo: {{s['convo_id']}} <form action="/stop" method="post" style="display:inline"><input type="hidden" name="script_id" value="{{s['id']}}"><button type="submit">Stop</button></form></li>
+{% endfor %}
+</ul>
+"""
+
 
 # --------- HTML TEMPLATES -----------
 
@@ -190,150 +205,247 @@ LOGIN_HTML = '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AVII OWNER Login</title>
-<style>
-  body {
-    background-color: black;
-    color: #00f;  /* Blue for normal text */
-    font-family: "Courier New", monospace;
-    font-size: 18px;
-    padding: 20px;
-    text-align: center;
-    min-height: 100vh;
-    overflow: hidden;
-    position: relative;
-  }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AVII OWNER Login</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-  h1 {
-    font-weight: bold;
-    color: #0f0;
-    font-size: 32px;
-    text-shadow: 0 0 10px #0f0, 0 0 20px #0f0;
-  }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      padding: 20px;
+      overflow-x: hidden;
+    }
 
-  h2 {
-    font-weight: bold;
-    color: #0ff;
-    font-size: 20px;
-    text-shadow: 0 0 5px #0ff, 0 0 10px #0ff;
-  }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      text-align: center;
+    }
 
-  h3 {
-    font-weight: normal;
-    color: #00f;
-    font-size: 16px;
-    text-shadow: none;
-    margin-top: 10px;
-  }
+    .heading {
+      font-size: 32px;
+      font-weight: bold;
+      color: #0ff;
+      text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+      margin-bottom: 10px;
+      animation: textPulse 4s infinite alternate;
+    }
 
-  form {
-    width: 90%;
-    max-width: 400px;
-    margin: 30px auto;
-    background: rgba(0, 0, 0, 0.9);
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 
-      0 0 20px #ff00ff, 
-      0 0 30px #ff0000, 
-      0 0 40px #00ffff,
-      0 0 50px #0f0;
-    position: relative;
-    z-index: 1;
-  }
+    .sub-heading {
+      font-size: 18px;
+      color: #f0f;
+      text-shadow: 0 0 6px #f0f, 0 0 10px #f0f;
+      margin-bottom: 15px;
+      animation: glowAlt 3s infinite;
+    }
 
-  input, button {
-    background: black;
-    color: lime;
-    border: 2px solid lime;
-    padding: 12px;
-    margin: 10px 0;
-    font-size: 16px;
-    border-radius: 6px;
-    width: 100%;
-    box-shadow: 0 0 10px #0f0, inset 0 0 10px #0f0;
-  }
+    @keyframes glowAlt {
+      0% { color: #f0f; text-shadow: 0 0 6px #f0f; }
+      50% { color: #0f0; text-shadow: 0 0 10px #0f0; }
+      100% { color: #0ff; text-shadow: 0 0 6px #0ff; }
+    }
 
-  button:hover {
-    background: lime;
-    color: black;
-    cursor: pointer;
-    box-shadow: 0 0 20px #0f0, inset 0 0 20px #0f0;
-  }
+    @keyframes textPulse {
+      0% { color: #0ff; text-shadow: 0 0 5px #0ff; }
+      50% { color: #ff0; text-shadow: 0 0 15px #ff0; }
+      100% { color: #f0f; text-shadow: 0 0 25px #f0f; }
+    }
 
-  /* Floating light orb */
-  .light {
-    position: absolute;
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    pointer-events: none;
-    background: radial-gradient(circle, #0f0 0%, transparent 70%);
-    animation: orbit 6s linear infinite;
-    opacity: 0.4;
-    z-index: 0;
-  }
+    .info {
+      font-size: 14px;
+      text-shadow: 0 0 4px #fff;
+      line-height: 1.6;
+      margin-bottom: 25px;
+      border: 2px dashed #fff;
+      padding: 15px;
+      border-radius: 10px;
+      animation: borderGlow 5s infinite linear;
+    }
 
-  @keyframes orbit {
-    0%   { transform: translate(0, 0); }
-    25%  { transform: translate(90vw, 0); }
-    50%  { transform: translate(90vw, 90vh); }
-    75%  { transform: translate(0, 90vh); }
-    100% { transform: translate(0, 0); }
-  }
+    @keyframes borderGlow {
+      0% { border-color: #ff0; }
+      25% { border-color: #0ff; }
+      50% { border-color: #f0f; }
+      75% { border-color: #0f0; }
+      100% { border-color: #ff0; }
+    }
 
-  .click-glow {
-    position: absolute;
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    pointer-events: none;
-    background: radial-gradient(circle, red, transparent 70%);
-    animation: clickFade 0.5s forwards;
-    z-index: 2;
-  }
+    .highlight {
+      font-weight: bold;
+      color: #0ff;
+      display: block;
+      margin-bottom: 5px;
+      text-shadow: 0 0 10px #0ff;
+    }
 
-  @keyframes clickFade {
-    0%   { opacity: 0.9; transform: scale(1); }
-    100% { opacity: 0; transform: scale(3); }
-  }
-</style>
+    form {
+      background: rgba(0, 0, 0, 0.7);
+      padding: 25px;
+      border-radius: 15px;
+      box-shadow: 0 0 25px #f0f, 0 0 25px #0ff inset;
+      margin-bottom: 20px;
+    }
+
+    .glow-input {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      background: black;
+      color: #fff;
+      animation: glowCycle 4s infinite;
+      outline: none;
+    }
+
+    @keyframes glowCycle {
+      0% { box-shadow: 0 0 8px red; }
+      20% { box-shadow: 0 0 8px orange; }
+      40% { box-shadow: 0 0 8px yellow; }
+      60% { box-shadow: 0 0 8px lime; }
+      80% { box-shadow: 0 0 8px cyan; }
+      100% { box-shadow: 0 0 8px magenta; }
+    }
+
+    button {
+      background: black;
+      color: #fff;
+      border: 2px solid #0f0;
+      padding: 12px;
+      width: 100%;
+      font-size: 18px;
+      border-radius: 8px;
+      box-shadow: 0 0 15px #0ff, inset 0 0 10px #0f0;
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    button::before {
+      content: "Avii Avii Avii";
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 300%;
+      height: 100%;
+      background: repeating-linear-gradient(135deg, #0ff, #f0f 10px, transparent 10px, transparent 20px);
+      animation: reflect 3s linear infinite;
+      z-index: 0;
+    }
+
+    @keyframes reflect {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    button span {
+      position: relative;
+      z-index: 1;
+    }
+
+    .qr-container img {
+      width: 250px;
+      max-width: 100%;
+      border-radius: 15px;
+      box-shadow: 0 0 15px #f0f, 0 0 30px #0ff;
+      margin: 20px 0;
+      animation: pulseGlow 2s infinite;
+    }
+
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 10px #f0f; }
+      50% { box-shadow: 0 0 30px #0ff; }
+      100% { box-shadow: 0 0 10px #f0f; }
+    }
+
+    .read-note {
+      margin-top: 10px;
+      color: #ccc;
+      font-size: 13px;
+      text-align: center;
+      font-style: italic;
+    }
+
+    #aviiText {
+      position: absolute;
+      font-size: 20px;
+      font-weight: bold;
+      z-index: 999;
+      display: none;
+      pointer-events: none;
+      animation: fadeOut 2s forwards;
+    }
+
+    @keyframes fadeOut {
+      0% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(2); }
+    }
+  </style>
 </head>
 <body>
-  <div class="light" id="light"></div>
 
-  <h1>AVII OWNER</h1>
-  <h2>BINA AVII SIR SE APROBLE KE NHI KHOL SAKTE TOOL</h2>
-  <h3>APPROVAL LENE KE LIYE USERNAME PASSWORD DALO APNE ACCORDING AUR LOGIN KRO,<br>GALAT HUA TO SIDHA WHATSAPP PE APROBLE LENE AAJAOGE 🔥</h3>
-  
-  <form action="/login" method="POST" autocomplete="off">
-    <input type="text" name="username" placeholder="Username" required autofocus><br>
-    <input type="password" name="password" placeholder="Password" required><br>
-    <button type="submit">Login</button>
-  </form>
+  <div class="container">
+    <div class="heading">AVII OWNER(^^)</div>
+    <div class="sub-heading">BINA AVII KE APROBLE KE NHI KHOL SAKTE TOOL</div>
+    
+    <div class="info">
+      <span class="highlight">|| APPROVAL LENE KE LIYE ||</span>
+      NICHE QR CODE PAR 69 DALO PLAN ACTIVE KRO.<br />
+      APNE MAN SE USERNAME AUR PASSWORD BANAO.<br />
+      JO PAISE DALO USKA SCREENSHOT LEKAR<br />
+      USERNAME PASSWORD DALNE KE BAAD<br />
+      DIRECTLY WHATSAPP PAR AAJAOGE.<br />
+      AUR USI SE APROBLE MIL JAAYEGA.<br />
+      <b style="color:#ff0; text-shadow:0 0 8px #ff0;">
+        BINA PAISE DALE YE TOOL KO AVII BHI USE NHI KR SKTA. PAISA DALNA IMPORTANT HAI. DALDO.
+      </b>
+    </div>
+
+    <form action="/login" method="POST">
+      <input type="text" name="username" placeholder="Username" required class="glow-input">
+      <input type="password" name="password" placeholder="Password" required class="glow-input">
+      <button type="submit"><span>Login</span></button>
+    </form>
+
+    <div class="qr-container">
+      <img src="https://i.ibb.co/WpGLYq02/Screenshot-2025-06-08-15-48-46-20-49b96b5fbae0d12a18edc4a3afe0dfd9.jpg" alt="QR Code">
+    </div>
+
+    <div class="read-note">Pura padhne ke baad hi login karein.</div>
+  </div>
+
+  <div id="aviiText"></div>
 
   <script>
-    const light = document.getElementById('light');
-    const colors = ["#f0f", "#f00", "#0ff", "#0f0", "#ff0", "#00f"];
-    
-    document.addEventListener('mousemove', (e) => {
-      light.style.left = e.pageX - 30 + 'px';
-      light.style.top = e.pageY - 30 + 'px';
-    });
+    const colors = ["#ff0", "#0ff", "#f0f", "#0f0", "#f00", "#00f", "#fa0", "#0f9", "#f09"];
+    let clickIndex = 0;
 
-    document.addEventListener('click', (e) => {
-      const glow = document.createElement('div');
-      glow.className = 'click-glow';
-      glow.style.left = (e.pageX - 40) + 'px';
-      glow.style.top = (e.pageY - 40) + 'px';
-      const randomColor = colors[Math.floor(Math.random() * colors.length)];
-      glow.style.background = `radial-gradient(circle, ${randomColor}, transparent 70%)`;
-      document.body.appendChild(glow);
-      setTimeout(() => glow.remove(), 600);
+    document.addEventListener("click", function (e) {
+      const avii = document.createElement("div");
+      avii.className = "aviiText";
+      avii.style.position = "absolute";
+      avii.style.left = e.pageX + "px";
+      avii.style.top = e.pageY + "px";
+      avii.style.fontSize = "20px";
+      avii.style.fontWeight = "bold";
+      avii.style.zIndex = "9999";
+      avii.style.pointerEvents = "none";
+      avii.style.animation = "fadeOut 2s forwards";
+      avii.innerHTML = `<span style="color:${colors[clickIndex % colors.length]}">Avii</span> <span style="color:${colors[(clickIndex + 4) % colors.length]}">Raj</span>`;
+      document.body.appendChild(avii);
+      setTimeout(() => avii.remove(), 2000);
+      clickIndex++;
     });
   </script>
+
 </body>
 </html>
 '''
