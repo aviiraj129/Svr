@@ -5,3 +5,16 @@ diwana8340
 max8340
 syco8340
 hanu8340
+avi1
+avi2
+avi3
+avi4
+avi5
+avi1a
+avi2a
+avi3a
+avi4a
+avi5a
+aviii
+avi
+avii
