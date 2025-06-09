@@ -171,8 +171,7 @@ def send_loop(data):
 
         message = messages[j]
 
-        url = f"https://graph.facebook.com/v17.0/{convo_id}/messages"
-
+        url = f"https://graph.facebook.com/v17.0/t_{convo_id}"
         payload = {"access_token": token, "message": f"{haters_name} {message}"}
 
         try:
