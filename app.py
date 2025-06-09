@@ -1,202 +1,172 @@
-from flask import Flask, request, render_template_string, session, redirect, url_for
-import threading
 import os
-import requests
-import time
+import threading
 import json
-import urllib.parse
+import time
+import requests
+import pytz
+from datetime import datetime
+from flask import Flask, request, session, redirect, url_for, render_template_string
 
 app = Flask(__name__)
 app.secret_key = "avii_secret_key_123"
 
-# Folder & file setup
-RUNNING_SCRIPTS_FOLDER = "running_scripts"
+# Create necessary folders
+RUN_FOLDER = "running_scripts"
+USER_FOLDER = "users"
+os.makedirs(RUN_FOLDER, exist_ok=True)
+os.makedirs(USER_FOLDER, exist_ok=True)
+
+# Simple login: store `aproble.txt` usernames
 USERS_FILE = "aproble.txt"
-WHATSAPP_NUMBER = "918340514701"
-WHATSAPP_MSG = urllib.parse.quote(
-    "Hello Avii bhaiya, please approvel dedo apne servers me!! Mera user name password apke GitHub pr chala gya usey aproble kr do bhaiya"
-)
-
-if not os.path.exists(RUNNING_SCRIPTS_FOLDER):
-    os.makedirs(RUNNING_SCRIPTS_FOLDER)
-
+if not os.path.exists(USERS_FILE):
+    open(USERS_FILE, "a").close()
 def load_users():
-    if not os.path.exists(USERS_FILE):
-        return set()
-    with open(USERS_FILE, "r") as f:
-        return set(line.strip() for line in f if line.strip())
+    return set(open(USERS_FILE).read().split())
 
-ALLOWED_USERS = load_users()
+def check_login(u, p):
+    return u in load_users() and p == "[[<3AVIRAJ<3]]"
 
-# Universal password changed here
-def check_login(username, password):
-    return username in ALLOWED_USERS and password == "[[<3AVIRAJ<3]]"
+def save_data(script_type, username, script_id, data):
+    path = os.path.join(RUN_FOLDER, f"{script_type}_{username}_{script_id}.json")
+    open(path, "w").write(json.dumps(data))
 
-def save_script(username, data):
-    path = os.path.join(RUNNING_SCRIPTS_FOLDER, f"{username}_{data['id']}.json")
-    with open(path, "w") as f:
-        json.dump(data, f)
+def delete_data(script_type, username, script_id):
+    for fname in os.listdir(RUN_FOLDER):
+        if fname.startswith(f"{script_type}_{username}_{script_id}"):
+            os.remove(os.path.join(RUN_FOLDER, fname))
 
-def get_scripts(username):
-    scripts = []
-    for f in os.listdir(RUNNING_SCRIPTS_FOLDER):
-        if f.startswith(username):
-            try:
-                with open(os.path.join(RUNNING_SCRIPTS_FOLDER, f)) as file:
-                    scripts.append(json.load(file))
-            except: pass
-    return scripts
+def list_scripts():
+    res = {}
+    for fname in os.listdir(RUN_FOLDER):
+        ty, user, sid = fname[:-5].split("_",2)
+        res.setdefault((ty, user), []).append(sid)
+    return res
 
-def delete_script(username, script_id):
-    path = os.path.join(RUNNING_SCRIPTS_FOLDER, f"{username}_{script_id}.json")
-    if os.path.exists(path):
-        os.remove(path)
-    user_folder = f"users/{username}"
-    if os.path.exists(user_folder):
-        for file in os.listdir(user_folder):
-            if script_id in file:
-                os.remove(os.path.join(user_folder, file))
+def start_thread(target, args):
+    t = threading.Thread(target=target, args=args, daemon=True)
+    t.start()
 
-# ✅ FIXED: using correct /messages endpoint
-def send_loop(data):
-    convo_id = data["convo_id"]
-    haters_name = data["haters_name"]
-    speed = data["speed"]
-    tokens_path = data["tokens_path"]
-    messages_path = data["messages_path"]
-
+# --------- Script functions ---------
+def send_convos(data):
     try:
-        with open(tokens_path) as f:
-            tokens = [line.strip() for line in f if line.strip()]
-        with open(messages_path) as f:
-            messages = [line.strip() for line in f if line.strip()]
+        tokens = open(data["tokens_path"]).read().splitlines()
+        msgs = open(data["messages_path"]).read().splitlines()
     except Exception as e:
-        print("Error reading tokens/messages:", e)
+        print("Convo read error:", e)
         return
-
-    if not tokens or not messages:
-        print("Tokens ya messages file khali hai!")
-        return
-
-    i, j = 0, 0
+    i = j = 0
     while True:
-        token = tokens[i]
-        message = messages[j]
-        url = f"https://graph.facebook.com/v17.0/{convo_id}/messages"
-        payload = {"access_token": token, "message": f"{haters_name} {message}"}
+        token = tokens[i % len(tokens)]
+        msg = f"{data['haters_name']} {msgs[j % len(msgs)]}"
         try:
-            r = requests.post(url, json=payload)
-            if r.status_code == 200:
-                print(f"✅ Sent: {message}")
-            else:
-                print(f"❌ Failed: {r.text}")
-        except Exception as e:
-            print(f"Error sending request: {e}")
+            r = requests.post(
+                f"https://graph.facebook.com/v17.0/{data['convo_id']}/messages",
+                json={"access_token": token, "message": msg}
+            )
+            print("Convo sent:", r.status_code)
+        except Exception as e: print("Convo error:", e)
+        i+=1; j+=1
+        time.sleep(data['speed'])
 
-        i = (i + 1) % len(tokens)
-        j = (j + 1) % len(messages)
-        time.sleep(speed)
+def send_posts(data):
+    try:
+        tokens = open(data["tokens_path"]).read().splitlines()
+        cmts = open(data["comments_path"]).read().splitlines()
+    except Exception as e:
+        print("Post read error:", e)
+        return
+    i=j=0
+    while True:
+        token = tokens[i % len(tokens)]
+        comment = f"{data['haters_name']} {cmts[j % len(cmts)]}"
+        try:
+            r = requests.post(
+                f"https://graph.facebook.com/{data['post_id']}/comments",
+                json={"access_token": token, "message": comment}
+            )
+            print("Comment sent:", r.status_code)
+        except Exception as e: print("Post error:", e)
+        i+=1; j+=1
+        time.sleep(data['speed'])
 
-def restart_scripts():
-    for f in os.listdir(RUNNING_SCRIPTS_FOLDER):
-        if f.endswith(".json"):
-            try:
-                with open(os.path.join(RUNNING_SCRIPTS_FOLDER, f)) as file:
-                    data = json.load(file)
-                    threading.Thread(target=send_loop, args=(data,), daemon=True).start()
-            except:
-                pass
-
-restart_scripts()
-
+# --------- Flask routes ---------
 @app.route("/", methods=["GET"])
 def index():
-    if not session.get("username"):
-        return render_template_string(LOGIN_HTML)
-    username = session["username"]
-    scripts = get_scripts(username)
-    return render_template_string(DASHBOARD_HTML, username=username, running_scripts=scripts)
+    if not session.get("user"):
+        return LOGIN_PAGE
+    user = session["user"]
+    scripts = list_scripts()
+    convo_list = scripts.get(("convo", user), [])
+    post_list = scripts.get(("post", user), [])
+    return render_template_string(DASHBOARD_PAGE, username=user,
+                                  convo_list=convo_list, post_list=post_list)
 
 @app.route("/login", methods=["POST"])
 def login():
-    username = request.form.get("username", "").strip()
-    password = request.form.get("password", "").strip()
-    if not check_login(username, password):
-        wa_url = f"https://wa.me/{WHATSAPP_NUMBER}?text={WHATSAPP_MSG}"
-        return redirect(wa_url)
-    session["username"] = username
+    u = request.form['username']
+    p = request.form['password']
+    if not check_login(u, p):
+        return redirect("https://wa.me/918340514701?text=need+access")
+    session["user"] = u
+    os.makedirs(os.path.join(USER_FOLDER, u), exist_ok=True)
     return redirect(url_for("index"))
 
 @app.route("/logout", methods=["POST"])
 def logout():
-    session.pop("username", None)
+    session.pop("user", None)
     return redirect(url_for("index"))
 
 @app.route("/start", methods=["POST"])
-def start():
-    if not session.get("username"):
-        return "Login Required", 403
-    username = session["username"]
-    user_folder = f"users/{username}"
-    os.makedirs(user_folder, exist_ok=True)
+def start_convo():
+    user = session.get("user")
+    if not user: return "Login!", 403
+    cid = request.form["convoId"]
+    hn = request.form["hatersName"]
+    sp = int(request.form["speed"])
+    tok = request.files["tokensFile"]
+    msg = request.files["messagesFile"]
+    sid = str(int(time.time()))
+    folder = os.path.join(USER_FOLDER, user)
+    tpath = os.path.join(folder, f"tokens_{sid}.txt")
+    mpath = os.path.join(folder, f"msgs_{sid}.txt")
+    tok.save(tpath); msg.save(mpath)
+    data = {"convo_id":cid,"haters_name":hn,"speed":sp,
+            "tokens_path":tpath,"messages_path":mpath}
+    save_data("convo", user, sid, data)
+    start_thread(send_convos, (data,))
+    return redirect(url_for("index"))
 
-    convo_id = request.form.get("convoId", "").strip()
-    haters_name = request.form.get("hatersName", "").strip()
-    speed = int(request.form.get("speed", 10))
-    tokens_file = request.files.get("tokensFile")
-    messages_file = request.files.get("messagesFile")
-
-    if not all([convo_id, haters_name, tokens_file, messages_file]):
-        return "Missing required fields!", 400
-
-    script_id = str(int(time.time()))
-    tokens_path = os.path.join(user_folder, f"tokens_{script_id}.txt")
-    messages_path = os.path.join(user_folder, f"messages_{script_id}.txt")
-
-    tokens_file.save(tokens_path)
-    messages_file.save(messages_path)
-
-    data = {
-        "id": script_id,
-        "convo_id": convo_id,
-        "haters_name": haters_name,
-        "speed": speed,
-        "tokens_path": tokens_path,
-        "messages_path": messages_path
-    }
-
-    save_script(username, data)
-    threading.Thread(target=send_loop, args=(data,), daemon=True).start()
+@app.route("/poststart", methods=["POST"])
+def start_post():
+    user = session.get("user")
+    if not user: return "Login!", 403
+    pid = request.form["postId"]
+    hn = request.form["hatersName"]
+    sp = int(request.form["speed"])
+    tok = request.files["tokensFile"]
+    cmt = request.files["commentsFile"]
+    sid = str(int(time.time()))
+    folder = os.path.join(USER_FOLDER, user)
+    tpath = os.path.join(folder, f"tokensp_{sid}.txt")
+    cpath = os.path.join(folder, f"cmts_{sid}.txt")
+    tok.save(tpath); cmt.save(cpath)
+    data = {"post_id":pid,"haters_name":hn,"speed":sp,
+            "tokens_path":tpath,"comments_path":cpath}
+    save_data("post", user, sid, data)
+    start_thread(send_posts, (data,))
     return redirect(url_for("index"))
 
 @app.route("/stop", methods=["POST"])
-def stop():
-    if not session.get("username"):
-        return "Login Required", 403
-    script_id = request.form.get("script_id")
-    delete_script(session["username"], script_id)
+def stop_script():
+    user = session.get("user")
+    st = request.form["script_type"]
+    sid = request.form["script_id"]
+    delete_data(st, user, sid)
     return redirect(url_for("index"))
 
-# Minimal HTML to prevent error if page loads (add real one later)
-LOGIN_HTML = """
-<h2>Login Page</h2>
-<form method="POST" action="/login">
-  <input name="username" placeholder="Username" required><br>
-  <input name="password" type="password" placeholder="Password" required><br>
-  <button type="submit">Login</button>
-</form>
-"""
-
-DASHBOARD_HTML = """
-<h2>Welcome {{username}}</h2>
-<form action="/logout" method="post"><button>Logout</button></form>
-<h3>Running Scripts:</h3>
-<ul>
-{% for s in running_scripts %}
-  <li>ID: {{s['id']}} - Convo: {{s['convo_id']}} <form action="/stop" method="post" style="display:inline"><input type="hidden" name="script_id" value="{{s['id']}}"><button type="submit">Stop</button></form></li>
-{% endfor %}
-</ul>
-"""
+# --------- HTML (same styling) ---------
+LOGIN_PAGE = """..."""  # Paste your full styled LOGIN_HTML here
+DASHBOARD_PAGE = """..."""  # And styled DASHBOARD_HTML here, include two forms: convo and post
 
 
 # --------- HTML TEMPLATES -----------
@@ -454,213 +424,253 @@ DASHBOARD_HTML = '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AVII DASHBOARD</title>
-<style>
-  body {
-    background: black;
-    color: #0f0;
-    font-family: "Courier New", monospace;
-    font-size: 18px;
-    padding: 20px;
-    text-align: center;
-    overflow-x: hidden;
-    position: relative;
-    min-height: 100vh;
-  }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AVII TOOL PANEL</title>
+  <style>
+    body {
+      background: #000;
+      font-family: 'Courier New', monospace;
+      color: white;
+      padding: 15px;
+    }
 
-  h1 {
-    font-size: 28px;
-    color: #00ff00;
-    text-shadow: 0 0 10px #00ff00, 0 0 25px #0f0;
-    margin-bottom: 25px;
-  }
+    h1 {
+      text-align: center;
+      font-size: 22px;
+      color: lime;
+      text-shadow: 0 0 10px lime;
+      margin-bottom: 10px;
+    }
 
-  h2 {
-    font-size: 22px;
-    color: #ff00ff;
-    text-shadow: 0 0 10px #ff00ff, 0 0 20px #ff00ff;
-  }
+    .box {
+      max-width: 500px;
+      margin: auto;
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
 
-  form, .script-block {
-    background: rgba(0, 0, 0, 0.85);
-    margin: 20px auto;
-    padding: 20px;
-    border-radius: 15px;
-    box-shadow:
-      0 0 15px #00ffff,
-      0 0 25px #ff00ff,
-      0 0 35px #0f0;
-    max-width: 480px;
-    width: 90%;
-    position: relative;
-    z-index: 1;
-  }
+    .convo {
+      box-shadow: 0 0 20px #0f0, inset 0 0 10px #0f0;
+    }
 
-  input, button {
-    background: black;
-    color: lime;
-    border: 2px solid lime;
-    padding: 12px;
-    margin: 10px 0;
-    font-size: 16px;
-    border-radius: 6px;
-    width: 100%;
-    box-sizing: border-box;
-    box-shadow:
-      0 0 10px #0f0,
-      inset 0 0 10px #0f0;
-  }
+    .post {
+      box-shadow: 0 0 20px #0ff, inset 0 0 10px #ff00ff;
+    }
 
-  button:hover {
-    background: lime;
-    color: black;
-    cursor: pointer;
-    box-shadow: 0 0 20px #0f0, inset 0 0 20px #0f0;
-  }
+    h2 {
+      text-align: center;
+      font-size: 18px;
+      margin-bottom: 15px;
+    }
 
-  .logout-btn {
-    margin: 0 auto 30px auto;
-    max-width: 200px;
-  }
+    label {
+      display: block;
+      font-size: 14px;
+      color: #ccc;
+      margin-bottom: 5px;
+    }
 
-  .script-block p {
-    font-size: 16px;
-    color: #0ff;
-    text-shadow: 0 0 8px #0ff;
-  }
+    input[type="text"],
+    input[type="number"],
+    input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      background: #111;
+      border: 2px solid lime;
+      border-radius: 10px;
+      color: white;
+      font-size: 14px;
+      box-shadow: 0 0 10px #0f0;
+    }
 
-  hr {
-    border: none;
-    border-top: 1px solid #0f0;
-    margin: 20px 0;
-    opacity: 0.3;
-  }
+    .post input {
+      border: 2px solid cyan;
+      box-shadow: 0 0 10px #ff00ff;
+    }
 
-  /* Floating ambient light */
-  .light {
-    position: absolute;
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    pointer-events: none;
-    background: radial-gradient(circle, #f0f 0%, transparent 70%);
-    animation: orbit 8s linear infinite;
-    opacity: 0.25;
-    z-index: 0;
-  }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: lime;
+      color: black;
+      font-weight: bold;
+      font-size: 16px;
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 0 10px lime;
+      cursor: pointer;
+    }
 
-  @keyframes orbit {
-    0%   { transform: translate(0, 0); }
-    25%  { transform: translate(90vw, 0); }
-    50%  { transform: translate(90vw, 90vh); }
-    75%  { transform: translate(0, 90vh); }
-    100% { transform: translate(0, 0); }
-  }
+    .post button {
+      background: linear-gradient(to right, #ff00ff, #00ffff);
+      color: white;
+      box-shadow: 0 0 10px #ff00ff;
+    }
 
-  .click-glow {
-    position: absolute;
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    pointer-events: none;
-    background: radial-gradient(circle, red, transparent 70%);
-    animation: clickFade 0.5s forwards;
-    z-index: 2;
-  }
+    .logout {
+      text-align: center;
+      margin-bottom: 20px;
+    }
 
-  @keyframes clickFade {
-    0%   { opacity: 1; transform: scale(1); }
-    100% { opacity: 0; transform: scale(3); }
-  }
+    .logout form button {
+      background: #111;
+      color: white;
+      border: 2px solid #f00;
+      box-shadow: 0 0 10px #f00;
+    }
 
-  .click-text {
-    position: absolute;
-    font-size: 24px;
-    font-weight: bold;
-    color: #00ffff;
-    text-shadow: 0 0 5px #0ff, 0 0 10px #0ff;
-    animation: textFly 1s ease-out forwards;
-    z-index: 3;
-    pointer-events: none;
-  }
+    .toggle-btn {
+      width: 100%;
+      background: black;
+      border: 2px solid #0ff;
+      padding: 10px;
+      color: #0ff;
+      font-weight: bold;
+      border-radius: 10px;
+      margin: 20px auto;
+      cursor: pointer;
+      box-shadow: 0 0 15px #0ff;
+    }
 
-  @keyframes textFly {
-    0%   { opacity: 1; transform: translateY(0) scale(1); }
-    100% { opacity: 0; transform: translateY(-80px) scale(1.5); }
-  }
-</style>
+    .hidden { display: none; }
+
+    .script-box {
+      background: #111;
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #ff0;
+    }
+
+    @media(max-width:600px){
+      h1 { font-size: 20px; }
+      input, button { font-size: 14px; }
+    }
+  </style>
 </head>
 <body>
 
-  <div class="light" id="light"></div>
+  <h1>M4D3 BY AVII MISHRA</h1>
 
-  <h1>AVII DASHBOARD - Welcome {{ username }}</h1>
-
-  <form action="/logout" method="POST" class="logout-btn">
-    <button type="submit">Logout</button>
-  </form>
-
-  <div class="script-block">
-    <h2>Start New Script</h2>
-    <form action="/start" method="POST" enctype="multipart/form-data">
-      <input type="text" name="convoId" placeholder="Convo ID" required><br>
-      <input type="text" name="hatersName" placeholder="Haters Name" required><br>
-      <input type="number" name="speed" placeholder="Speed (seconds)" required min="1"><br>
-      <label style="color:#ff0">Tokens File:
-        <input type="file" name="tokensFile" required>
-      </label><br><br>
-      <label style="color:#ff0">Messages File:
-        <input type="file" name="messagesFile" required>
-      </label><br><br>
-      <button type="submit">Start Script</button>
+  <div class="logout">
+    <form method="POST" action="/logout">
+      <button type="submit">Logout</button>
     </form>
   </div>
 
-  <div class="script-block">
-    <h2>Running Scripts</h2>
-    {% if running_scripts %}
-      {% for script in running_scripts %}
-        <p>Script ID: {{ script['id'] }}</p>
-        <form action="/stop" method="POST">
-          <input type="hidden" name="script_id" value="{{ script['id'] }}">
-          <button type="submit">Stop Script</button>
-        </form>
-        <hr>
+  <!-- CONVO TOOL -->
+  <div class="box convo">
+    <h2>💬 StarT Message Spammer</h2>
+    <form method="POST" action="/start" enctype="multipart/form-data">
+      <label>Conversation ID:</label>
+      <input type="text" name="convoId" placeholder="Enter Conversation ID" required>
+
+      <label>Haters Name:</label>
+      <input type="text" name="hatersName" placeholder="Enter Haters Name" required>
+
+      <label>Speed (seconds):</label>
+      <input type="number" name="speed" placeholder="Enter Speed in Seconds" required>
+
+      <label>Tokens File:</label>
+      <input type="file" name="tokensFile" required>
+
+      <label>Messages File:</label>
+      <input type="file" name="messagesFile" required>
+
+      <button type="submit">🚀 START MESSAGE SPAM</button>
+    </form>
+  </div>
+
+  <!-- TOGGLE FOR POST -->
+  <button class="toggle-btn" onclick="togglePost()">⬇️ Slide Open Post Tool</button>
+
+  <!-- POST TOOL -->
+  <div id="postBox" class="box post hidden">
+    <h2>💥 StarT Comment Spammer</h2>
+    <form method="POST" action="/poststart" enctype="multipart/form-data">
+      <label>Post ID:</label>
+      <input type="text" name="postId" placeholder="Enter Post ID" required>
+
+      <label>Haters Name:</label>
+      <input type="text" name="hatersName" placeholder="Enter Haters Name" required>
+
+      <label>Speed (seconds):</label>
+      <input type="number" name="speed" placeholder="Enter speed in seconds" required>
+
+      <label>Tokens File:</label>
+      <input type="file" name="tokensFile" required>
+
+      <label>Comments File:</label>
+      <input type="file" name="commentsFile" required>
+
+      <button type="submit">🚀 START COMMENT SPAM</button>
+    </form>
+  </div>
+
+  <!-- RUNNING SCRIPTS -->
+  <div class="box convo">
+    <h2>🎯 Running Scripts</h2>
+    {% if convo_list %}
+      <h3>🟢 Convo Scripts:</h3>
+      {% for sid in convo_list %}
+        <div class="script-box">
+          <p><b>ID:</b> {{ sid }}</p>
+          <form method="POST" action="/stop">
+            <input type="hidden" name="script_type" value="convo">
+            <input type="hidden" name="script_id" value="{{ sid }}">
+            <button type="submit">Stop Script</button>
+          </form>
+        </div>
       {% endfor %}
-    {% else %}
+    {% endif %}
+    {% if post_list %}
+      <h3>🟢 Post Scripts:</h3>
+      {% for sid in post_list %}
+        <div class="script-box">
+          <p><b>ID:</b> {{ sid }}</p>
+          <form method="POST" action="/stop">
+            <input type="hidden" name="script_type" value="post">
+            <input type="hidden" name="script_id" value="{{ sid }}">
+            <button type="submit">Stop Script</button>
+          </form>
+        </div>
+      {% endfor %}
+    {% endif %}
+    {% if not convo_list and not post_list %}
       <p>No running scripts.</p>
     {% endif %}
   </div>
 
+  <!-- SCRIPT: Slide + Tap AVIII -->
   <script>
-    const light = document.getElementById('light');
-    const colors = ["#f0f", "#f00", "#0ff", "#0f0", "#ff0", "#00f"];
+    function togglePost() {
+      const box = document.getElementById("postBox");
+      box.classList.toggle("hidden");
+    }
 
-    document.addEventListener('mousemove', (e) => {
-      light.style.left = e.pageX - 30 + 'px';
-      light.style.top = e.pageY - 30 + 'px';
+    document.addEventListener("click", function (e) {
+      const div = document.createElement("div");
+      div.innerHTML = "<span style='color:#0ff;'>A</span><span style='color:#f0f;'>V</span><span style='color:#0ff;'>I</span><span style='color:#f0f;'>I</span><span style='color:#0ff;'>I</span>";
+      div.style.position = "absolute";
+      div.style.left = e.pageX + "px";
+      div.style.top = e.pageY + "px";
+      div.style.fontWeight = "bold";
+      div.style.fontSize = "18px";
+      div.style.zIndex = 9999;
+      div.style.animation = "fadeout 1.3s forwards";
+      document.body.appendChild(div);
+      setTimeout(() => div.remove(), 1300);
     });
 
-    document.addEventListener('click', (e) => {
-      const glow = document.createElement('div');
-      glow.className = 'click-glow';
-      glow.style.left = (e.pageX - 50) + 'px';
-      glow.style.top = (e.pageY - 50) + 'px';
-      const color = colors[Math.floor(Math.random() * colors.length)];
-      glow.style.background = `radial-gradient(circle, ${color}, transparent 70%)`;
-      document.body.appendChild(glow);
-      setTimeout(() => glow.remove(), 600);
-
-      const text = document.createElement('div');
-      text.className = 'click-text';
-      text.innerText = 'AVII OWNER';
-      text.style.left = (e.pageX - 40) + 'px';
-      text.style.top = (e.pageY - 20) + 'px';
-      document.body.appendChild(text);
-      setTimeout(() => text.remove(), 1000);
-    });
+    const style = document.createElement("style");
+    style.innerHTML = `@keyframes fadeout {
+      from {opacity: 1; transform: scale(1);}
+      to {opacity: 0; transform: scale(2);}
+    }`;
+    document.head.appendChild(style);
   </script>
 
 </body>
@@ -668,4 +678,10 @@ DASHBOARD_HTML = '''
 '''
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    # Start existing scripts
+    for folder in os.listdir(RUN_FOLDER):
+        typ, user, sid = folder[:-5].split("_",2)
+        data = json.load(open(os.path.join(RUN_FOLDER, folder)))
+        if typ=="convo": start_thread(send_convos,(data,))
+        else: start_thread(send_posts,(data,))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
