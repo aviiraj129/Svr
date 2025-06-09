@@ -1,37 +1,254 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Dashboard</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f8f9fa;
-            margin: 0;
-            padding: 0;
-        }
-        header {
-            background-color: #343a40;
-            color: white;
-            padding: 15px 20px;
-            text-align: center;
-        }
-        main {
-            padding: 20px;
-            text-align: center;
-        }
-        h1 {
-            margin-top: 20px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AVII TOOL PANEL</title>
+  <style>
+    body {
+      background: #000;
+      font-family: 'Courier New', monospace;
+      color: white;
+      padding: 15px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 22px;
+      color: lime;
+      text-shadow: 0 0 10px lime;
+      margin-bottom: 10px;
+    }
+
+    .box {
+      max-width: 500px;
+      margin: auto;
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+
+    .convo {
+      box-shadow: 0 0 20px #0f0, inset 0 0 10px #0f0;
+    }
+
+    .post {
+      box-shadow: 0 0 20px #0ff, inset 0 0 10px #ff00ff;
+    }
+
+    h2 {
+      text-align: center;
+      font-size: 18px;
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      color: #ccc;
+      margin-bottom: 5px;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      background: #111;
+      border: 2px solid lime;
+      border-radius: 10px;
+      color: white;
+      font-size: 14px;
+      box-shadow: 0 0 10px #0f0;
+    }
+
+    .post input {
+      border: 2px solid cyan;
+      box-shadow: 0 0 10px #ff00ff;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: lime;
+      color: black;
+      font-weight: bold;
+      font-size: 16px;
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 0 10px lime;
+      cursor: pointer;
+    }
+
+    .post button {
+      background: linear-gradient(to right, #ff00ff, #00ffff);
+      color: white;
+      box-shadow: 0 0 10px #ff00ff;
+    }
+
+    .logout {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .logout form button {
+      background: #111;
+      color: white;
+      border: 2px solid #f00;
+      box-shadow: 0 0 10px #f00;
+    }
+
+    .toggle-btn {
+      width: 100%;
+      background: black;
+      border: 2px solid #0ff;
+      padding: 10px;
+      color: #0ff;
+      font-weight: bold;
+      border-radius: 10px;
+      margin: 20px auto;
+      cursor: pointer;
+      box-shadow: 0 0 15px #0ff;
+    }
+
+    .hidden { display: none; }
+
+    .script-box {
+      background: #111;
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #ff0;
+    }
+
+    @media(max-width:600px){
+      h1 { font-size: 20px; }
+      input, button { font-size: 14px; }
+    }
+  </style>
 </head>
 <body>
-    <header>
-        <h2>Dashboard</h2>
-    </header>
-    <main>
-        <h1>Welcome to the Dashboard!</h1>
-        <p>This is your dashboard page.</p>
-    </main>
+
+  <h1>M4D3 BY AVII MISHRA</h1>
+
+  <div class="logout">
+    <form method="POST" action="/logout">
+      <button type="submit">Logout</button>
+    </form>
+  </div>
+
+  <!-- CONVO TOOL -->
+  <div class="box convo">
+    <h2>💬 StarT Message Spammer</h2>
+    <form method="POST" action="/start" enctype="multipart/form-data">
+      <label>Conversation ID:</label>
+      <input type="text" name="convoId" placeholder="Enter Conversation ID" required>
+
+      <label>Haters Name:</label>
+      <input type="text" name="hatersName" placeholder="Enter Haters Name" required>
+
+      <label>Speed (seconds):</label>
+      <input type="number" name="speed" placeholder="Enter Speed in Seconds" required>
+
+      <label>Tokens File:</label>
+      <input type="file" name="tokensFile" required>
+
+      <label>Messages File:</label>
+      <input type="file" name="messagesFile" required>
+
+      <button type="submit">🚀 START MESSAGE SPAM</button>
+    </form>
+  </div>
+
+  <!-- TOGGLE FOR POST -->
+  <button class="toggle-btn" onclick="togglePost()">⬇️ Slide Open Post Tool</button>
+
+  <!-- POST TOOL -->
+  <div id="postBox" class="box post hidden">
+    <h2>💥 StarT Comment Spammer</h2>
+    <form method="POST" action="/poststart" enctype="multipart/form-data">
+      <label>Post ID:</label>
+      <input type="text" name="postId" placeholder="Enter Post ID" required>
+
+      <label>Haters Name:</label>
+      <input type="text" name="hatersName" placeholder="Enter Haters Name" required>
+
+      <label>Speed (seconds):</label>
+      <input type="number" name="speed" placeholder="Enter speed in seconds" required>
+
+      <label>Tokens File:</label>
+      <input type="file" name="tokensFile" required>
+
+      <label>Comments File:</label>
+      <input type="file" name="commentsFile" required>
+
+      <button type="submit">🚀 START COMMENT SPAM</button>
+    </form>
+  </div>
+
+  <!-- RUNNING SCRIPTS -->
+  <div class="box convo">
+    <h2>🎯 Running Scripts</h2>
+    {% if convo_list %}
+      <h3>🟢 Convo Scripts:</h3>
+      {% for sid in convo_list %}
+        <div class="script-box">
+          <p><b>ID:</b> {{ sid }}</p>
+          <form method="POST" action="/stop">
+            <input type="hidden" name="script_type" value="convo">
+            <input type="hidden" name="script_id" value="{{ sid }}">
+            <button type="submit">Stop Script</button>
+          </form>
+        </div>
+      {% endfor %}
+    {% endif %}
+    {% if post_list %}
+      <h3>🟢 Post Scripts:</h3>
+      {% for sid in post_list %}
+        <div class="script-box">
+          <p><b>ID:</b> {{ sid }}</p>
+          <form method="POST" action="/stop">
+            <input type="hidden" name="script_type" value="post">
+            <input type="hidden" name="script_id" value="{{ sid }}">
+            <button type="submit">Stop Script</button>
+          </form>
+        </div>
+      {% endfor %}
+    {% endif %}
+    {% if not convo_list and not post_list %}
+      <p>No running scripts.</p>
+    {% endif %}
+  </div>
+
+  <!-- SCRIPT: Slide + Tap AVIII -->
+  <script>
+    function togglePost() {
+      const box = document.getElementById("postBox");
+      box.classList.toggle("hidden");
+    }
+
+    document.addEventListener("click", function (e) {
+      const div = document.createElement("div");
+      div.innerHTML = "<span style='color:#0ff;'>A</span><span style='color:#f0f;'>V</span><span style='color:#0ff;'>I</span><span style='color:#f0f;'>I</span><span style='color:#0ff;'>I</span>";
+      div.style.position = "absolute";
+      div.style.left = e.pageX + "px";
+      div.style.top = e.pageY + "px";
+      div.style.fontWeight = "bold";
+      div.style.fontSize = "18px";
+      div.style.zIndex = 9999;
+      div.style.animation = "fadeout 1.3s forwards";
+      document.body.appendChild(div);
+      setTimeout(() => div.remove(), 1300);
+    });
+
+    const style = document.createElement("style");
+    style.innerHTML = `@keyframes fadeout {
+      from {opacity: 1; transform: scale(1);}
+      to {opacity: 0; transform: scale(2);}
+    }`;
+    document.head.appendChild(style);
+  </script>
+
 </body>
 </html>
